@@ -3,7 +3,10 @@ import torch.nn as nn
 import numpy as np
 import torch
 
-
+'''
+ssl模块一定要使用和前面模块一样的初始化的u_embedding,i_embedding，
+这样的做法都是对统一的嵌入进行优化
+'''
 
 class SSL(nn.Module):
 
