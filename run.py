@@ -16,10 +16,10 @@ from utils.encoder import encoder
 from utils.combiner import combiner
 from utils.l0dense import L0Dense
 from utils.memory import memory
-from utils.ssl import SSL
 from torch.autograd import Variable
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
+from utils.ssl import SSL
 from utils.LoadGraph import Loader
 
 
@@ -28,12 +28,13 @@ class SMCCF(nn.Module):
     SMCCF的初始化变量u_embedding，i_embedding是经过下面3个组件生成表示后融合完成
     所以此类里面只需要对他们进行MLP
     '''
-    def __init__(self, u_embedding, i_embedding, ssl_loss, embed_dim, N=30000, droprate=0.5, beta_ema=0.999, device='cpu'):
+    def __init__(self, u_embedding, i_embedding, ssl_loss, dataset, embed_dim, N=30000, droprate=0.5, beta_ema=0.999, device='cpu'):
         super(SMCCF, self).__init__()
 
         self.u_embed = u_embedding
         self.i_embed = i_embedding
         self.ssl_loss = ssl_loss
+        self.dataset = dataset
         self.embed_dim = embed_dim
         self.N = N
         self.droprate = droprate
@@ -68,8 +69,7 @@ class SMCCF(nn.Module):
     def forward(self, nodes_u, nodes_i):
         nodes_u_embed = self.u_embed(nodes_u, nodes_i)
         nodes_i_embed = self.i_embed(nodes_u, nodes_i)
-        print(self.u_embed)
-        print(nodes_u_embed)
+        #print(self.u_embed)
 
         # nodes_u_embed = self.u_embed
         # nodes_i_embed = self.i_embed
@@ -116,8 +116,8 @@ class SMCCF(nn.Module):
     def loss(self, nodes_u, nodes_i, ratings):
         scores = self.forward(nodes_u, nodes_i)
         loss = self.criterion(scores, ratings)
-        # total_loss = loss + self.regularization()
-        total_loss = loss + self.regularization() + self.ssl_loss
+        # total_loss = loss + self.regularization() + self.ssl_loss
+        total_loss = loss + self.ssl_loss
         return total_loss
 
 
@@ -191,6 +191,11 @@ def main():
     parser.add_argument('--dataset', type=str, default='yelp', help='dataset')
     parser.add_argument('--use_cuda', type=bool, default=True, help='use cuda or not')
     parser.add_argument('--load', type=bool, default=False, help='use checkpoint')
+    parser.add_argument('--layer', type=int,default=3,help="be used for SSL")
+    parser.add_argument('--aug_type', type=int, default=1, help="aug type")
+    parser.add_argument('--ssl_reg', type=float, default=0.5, help="sslreg")
+    parser.add_argument('--ssl_temp', type=float, default=0.5, help="ssltemp")
+    parser.add_argument('--ssl_ratio', type=float, default=0.5, help="sslratio")
     args = parser.parse_args()
 
     print('Dataset: ' + args.dataset)
@@ -222,21 +227,21 @@ def main():
         u_friends, i_friends = pickle.load(meta2)
 
         '''===========================change=============================='''
-    # dataset = Loader(args.dataset, device)
-    #
-    # trainset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.trainUser), torch.LongTensor(dataset.trainItem),
-    #                                               torch.FloatTensor(dataset.trainRating))
-    #
-    # testset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.testUser), torch.LongTensor(dataset.testItem),
-    #                                              torch.FloatTensor(dataset.testRating))
+    dataset = Loader(args.dataset, device)
+
+    trainset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.trainUser), torch.LongTensor(dataset.trainItem),
+                                                  torch.FloatTensor(dataset.trainRating))
+
+    testset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.testUser), torch.LongTensor(dataset.testItem),
+                                                 torch.FloatTensor(dataset.testRating))
 
     '''===========================change=============================='''
 
-    trainset = torch.utils.data.TensorDataset(torch.LongTensor(u_train), torch.LongTensor(i_train),
-                                              torch.FloatTensor(r_train))
-
-    testset = torch.utils.data.TensorDataset(torch.LongTensor(u_test), torch.LongTensor(i_test),
-                                             torch.FloatTensor(r_test))
+    # trainset = torch.utils.data.TensorDataset(torch.LongTensor(u_train), torch.LongTensor(i_train),
+    #                                           torch.FloatTensor(r_train))
+    #
+    # testset = torch.utils.data.TensorDataset(torch.LongTensor(u_test), torch.LongTensor(i_test),
+    #                                          torch.FloatTensor(r_test))
 
     _train = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True,
                                          num_workers=16, pin_memory=True)
@@ -245,11 +250,7 @@ def main():
     # print(type(u2e.to(device).num_embeddings)) # <class 'int'>
     '''===========================对U-I加入SSL处理=================================='''
     '''加入SSL学习得到的联合任务的损失，需要改变原user part的u2e，i2e，用ssl计算获得'''
-    # user-item part with SSL
-    # def __init__(self, dataset, reg, embed_size, batch_size, n_users, n_items, n_layers, aug_type, ssl_ratio, ssl_temp,
-    #              ssl_reg):
-#    ssl_loss = SSL()
-
+    ssl_loss=SSL(u2e.to(device), i2e.to(device), dataset, embed_dim, args.layer, args.aug_type ,args.ssl_reg, args.ssl_temp, args.ssl_ratio)
 
     # user part
     u_agg_embed_cmp1 = aggregator(u2e.to(device), i2e.to(device), u_adj, embed_dim, device=device,
@@ -273,7 +274,7 @@ def main():
 
 
     # model
-    model = SMCCF(u_embed, i_embed, embed_dim, args.N, droprate=args.droprate, device=device).to(device)
+    model = SMCCF(u_embed, i_embed, ssl_loss, dataset, embed_dim, args.N, droprate=args.droprate, device=device).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
