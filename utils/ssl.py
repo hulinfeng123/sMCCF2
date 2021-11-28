@@ -33,8 +33,8 @@ class SSL(nn.Module):
         self.ssl_temp = 0.5
         self.ssl_reg = 0.5
 
-        self.n_users = self.dataset.n_user
-        self.n_items = self.dataset.m_item
+        self.n_users = self.dataset.n_users
+        self.n_items = self.dataset.m_items
 
         self.training_user = trainUser
         self.training_item = trainItem
@@ -88,7 +88,7 @@ class SSL(nn.Module):
         # for i in len(range(self.weights['user_embedding'])):
         # print(self.user_embedding.size())
         # print(self.item_embedding.size())
-        ego_embeddings = torch.cat([self.user_embedding, self.item_embedding.t()], dim=0)
+        ego_embeddings = torch.cat([self.user_embedding, self.item_embedding], dim=0)
         # ego_embeddings = torch.cat([self.weights['user_embedding'], self.weights['item_embedding']], dim=0)
         ego_embeddings_sub1 = ego_embeddings
         ego_embeddings_sub2 = ego_embeddings
@@ -96,12 +96,12 @@ class SSL(nn.Module):
         all_embeddings_sub1 = [ego_embeddings_sub1]
         all_embeddings_sub2 = [ego_embeddings_sub2]
 
-        print(self.user_embedding.size())
-        print(self.item_embedding.size())
-        print(ego_embeddings.size())
-        print(sub_mat['sub_mat_12'].size())
-        #   3900*3900
-        print(ego_embeddings_sub1.size())
+        # print(self.user_embedding.size())
+        # print(self.item_embedding.size())
+        # print(ego_embeddings.size())
+        # print(sub_mat['sub_mat_12'].size())
+        # #   3900*3900
+        # print(ego_embeddings_sub1.size())
         #   2572*2614
         for k in range(1, self.n_layers + 1):
             '''

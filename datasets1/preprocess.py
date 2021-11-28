@@ -5,6 +5,7 @@ import random
 import pickle
 import numpy as np
 import torch.nn as nn
+from LoadGraph import Loader
 
 '''-----------------------!!!!!!!!!!!!!!!!---------------------
 lightgcn的数据集因为是没有评分的所以初始构造的u-i交互就是简单的不做评分区分的，因而初始化时构造的user和item各自的向量的第二维的维度可以相同
@@ -26,30 +27,34 @@ lightgcn的数据集因为是没有评分的所以初始构造的u-i交互就是
 # data_train = data[:int(length * 0.8)]
 # data_test = data[int(length * 0.8):]
 data_train = []
-for line in open('./business_user.txt', 'r'):
-    (business, user, rating) = line.split(' ')
-    data.append((business, user, rating))
-    #   （商品i，用户u，评分r）三元组，共30838项
+for line in open('./amazon/train.txt', 'r'):
+    (user, business, rating) = line.split(' ')
+    data_train.append((user, business, rating))
+random.shuffle(data_train)
+train_length = data_train.__len__()
 
-random.shuffle(data)
-
-length = data.__len__()
+data_test = []
+for line in open('./amazon/test.txt', 'r'):
+    (user, business, rating) = line.split(' ')
+    data_test.append((user, business, rating))
+random.shuffle(data_test)
+test_length = data_test.__len__()
 
 #   train与test 8：2分成
-data_train = data[:int(length * 0.8)]
-data_test = data[int(length * 0.8):]
+# data_train = data[:int(length * 0.8)]
+# data_test = data[int(length * 0.8):]
 
 i_train, u_train, r_train = [], [], []
 for i in range(len(data_train)):
-    i_train.append(int(data_train[i][0]))
-    u_train.append(int(data_train[i][1]))
+    i_train.append(int(data_train[i][1]))
+    u_train.append(int(data_train[i][0]))
     r_train.append(int(data_train[i][2]))
 #   i_train, u_train, r_train分别记录的是训练集三元组中的对应各自编号
 
 i_test, u_test, r_test = [], [], []
 for i in range(len(data_test)):
-    i_test.append(int(data_test[i][0]))
-    u_test.append(int(data_test[i][1]))
+    i_test.append(int(data_test[i][1]))
+    u_test.append(int(data_test[i][0]))
     r_test.append(int(data_test[i][2]))
 
 # data_train data_test是存着元组的列表
@@ -66,8 +71,12 @@ for i in range(len(u_train)):
     # u_adj是把一个用户对多个商品的评分组合在一行中的表示,所以需要用字典，如{"u1":"(i1,r1),(i2,r2),..."}
     i_adj[i_train[i]].extend([(u_train[i], r_train[i])])
 
-n_users = 1286
-n_items = 2614
+# n_users = 1286
+# n_items = 2614
+dataloader = Loader('amazon','cuda')
+n_users = dataloader.n_users
+n_items = dataloader.m_items
+print(dataloader.n_users)
 
 ufeature = {}  # 1286*2614   key是用户编码，值是列表表示的对应物品位置的评分
 for i in range(n_users):
@@ -109,7 +118,7 @@ ifea = torch.Tensor(np.array(ifea, dtype=np.float32))
 i2e = nn.Embedding(n_items, ifeature_size)
 i2e.weight = torch.nn.Parameter(ifea)
 
-with open('./_allData.p', 'wb') as meta:
+with open('./amazon/_allData.p', 'wb') as meta:
     pickle.dump((u2e, i2e, u_train, i_train, r_train, u_test, i_test, r_test, u_adj, i_adj), meta)
 
 '''

@@ -1,16 +1,11 @@
-# -*- coding: utf-8 -*-
-"""
-@author: liulin
-@time: 2021/7/9 15:53
-@subscribe: 
-
-"""
 from time import time
-
-import torch
 from scipy.sparse import csr_matrix
-import numpy as np
 import scipy.sparse as sp
+import torch
+import random
+import pickle
+import numpy as np
+import torch.nn as nn
 
 
 class Loader:
@@ -21,15 +16,17 @@ class Loader:
         self.m_item = 0
         self.device = device
         self.dataset = dataset
-        train_file = "./datasets1/" + dataset + "/train.txt"
-        test_file = "./datasets1/" + dataset + "/test.txt"
-        uu_file = "./datasets1/" + dataset + "/uu.txt"
-        ii_file = "./datasets1/" + dataset + "/ii.txt"
-        self.path = "./datasets1/" + dataset
+        train_file = "./" + dataset + "/train.txt"
+        test_file = "./" + dataset + "/test.txt"
+        uu_file = "./" + dataset + "/uu.txt"
+        ii_file = "./" + dataset + "/ii.txt"
+        self.path = "./" + dataset
         trainUniqueUsers, self.trainItem, self.trainUser, self.trainRating = [], [], [], []
         testUniqueUsers, self.testItem, self.testUser, self.testRating = [], [], [], []
         UUUniqueUsers, UUUser, UUInter = [], [], []
         IIUniqueUsers, IIItem, IIInter = [], [], []
+        self.u_adj = {}
+        self.i_adj = {}
         self.traindataSize = 0
         self.testdataSize = 0
 
@@ -137,6 +134,20 @@ class Loader:
         self.items_D = np.array(self.UserItemNet.sum(axis=0)).squeeze()
         self.items_D[self.items_D == 0.] = 1.
 
+        '''--------------------------------加入u_adj以及i_adj--------------------------------------'''
+        u_adj = {}
+        i_adj = {}
+        for i in range(len(self.trainUser)):
+            if self.trainUser[i] not in u_adj.keys():
+                u_adj[self.trainUser[i]] = []
+            if self.trainItem[i] not in i_adj.keys():
+                i_adj[self.trainItem[i]] = []
+            u_adj[self.trainUser[i]].extend([(self.trainItem[i], self.trainRating[i])])
+            # u_adj是把一个用户对多个商品的评分组合在一行中的表示,所以需要用字典，如{"u1":"(i1,r1),(i2,r2),..."}
+            i_adj[self.trainItem[i]].extend([(self.trainUser[i], self.trainRating[i])])
+        self.u_adj = u_adj
+        self.i_adj = i_adj
+        '''--------------------------------加入u_adj以及i_adj--------------------------------------'''
     @property
     def trainDataSize(self):
         return self.traindataSize
@@ -244,3 +255,4 @@ class Loader:
         index = torch.stack([row, col])
         data = torch.FloatTensor(coo.data)
         return torch.sparse.FloatTensor(index, data, torch.Size(coo.shape))
+

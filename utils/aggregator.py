@@ -16,6 +16,8 @@ class aggregator(nn.Module):
 
     """
 
+    ##############################
+    #   u2e和i2e不能轻易删除，里面是包含了带有评分的初始化向量
     def __init__(self, u_feature, i_feature, adj, embed_dim, weight_decay=0.0005, droprate=0.5,
                  device='cpu', is_user_part=True):
         super(aggregator, self).__init__()
@@ -27,11 +29,12 @@ class aggregator(nn.Module):
         self.droprate = droprate
         self.device = device
         self.is_user = is_user_part
+        #   u_layer是2614*256的tensor
+        #   i_layer是1286*256的tensor
         self.u_layer = L0Dense(self.ufeature.embedding_dim, self.embed_dim,
                                weight_decay=self.weight_decay, droprate=self.droprate, device=self.device)
         self.i_layer = L0Dense(self.ifeature.embedding_dim, self.embed_dim,
                                weight_decay=self.weight_decay, droprate=self.droprate, device=self.device)
-
         self.att = attention(self.embed_dim, self.droprate, device=self.device)
 
     def forward(self, nodes):

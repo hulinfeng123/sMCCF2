@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 import torch
-import random
 import pickle
 import argparse
 import numpy as np
@@ -16,11 +15,10 @@ from utils.encoder import encoder
 from utils.combiner import combiner
 from utils.l0dense import L0Dense
 from utils.memory import memory
-from torch.autograd import Variable
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
+from datasets1.LoadGraph import Loader
 from utils.ssl import SSL
-from utils.LoadGraph import Loader
 
 
 class SMCCF(nn.Module):
@@ -230,9 +228,6 @@ def main():
         '''===========================change=============================='''
     dataset = Loader(args.dataset, device)
 
-    print(len(dataset.trainUser))
-    print(len(dataset.trainItem))
-
     # trainset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.trainUser), torch.LongTensor(dataset.trainItem),
     #                                               torch.FloatTensor(dataset.trainRating))
     #
@@ -254,9 +249,15 @@ def main():
     # print(type(u2e.to(device).num_embeddings)) # <class 'int'>
     '''===========================对U-I加入SSL处理=================================='''
     '''加入SSL学习得到的联合任务的损失，需要改变原user part的u2e，i2e，用ssl计算获得'''
-    user_embedding = torch.tensor(u2e.weight.data)
-    item_embedding = torch.tensor(i2e.weight.data)
-    ssl_loss = SSL(user_embedding.to(device), item_embedding.to(device), dataset, u_train ,i_train)
+
+    ssl_loss = SSL(u2e.to(device), i2e.to(device), dataset, u_train ,i_train)
+    # embedding_user = torch.nn.Embedding(
+    #     num_embeddings=dataset.n_users, embedding_dim=args.embed_dim)
+    # embedding_item = torch.nn.Embedding(
+    #     num_embeddings=dataset.m_items, embedding_dim=args.embed_dim)
+    #
+    # nn.init.normal_(embedding_user.weight, mean=0, std=1)
+    # nn.init.normal_(embedding_item.weight, mean=0, std=1)
 
     # user part
     u_agg_embed_cmp1 = aggregator(u2e.to(device), i2e.to(device), u_adj, embed_dim, device=device,
@@ -269,7 +270,7 @@ def main():
                        is_user_part=True)
 
     # item part
-    i_agg_embed_cmp1 = aggregator(u2e.to(device), i2e.to(device), i_adj, embed_dim, device=device,
+    i_agg_embed_cmp1 = aggregator(u2e.to(device), i2e.to(device), u_adj, embed_dim, device=device,
                                   weight_decay=args.weight_decay, droprate=args.droprate, is_user_part=False)
     i_embed_cmp1 = encoder(embed_dim, i_agg_embed_cmp1, device=device, is_user_part=False)
     i_memory = memory(u2e.to(device), i2e.to(device), i_friends, embed_dim, weight_decay=args.weight_decay,
