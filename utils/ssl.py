@@ -223,6 +223,10 @@ class SSL(nn.Module):
                 # sp.diags是对矩阵做对角化
                 diag_indicator_user = sp.diags(indicator_user)
                 diag_indicator_item = sp.diags(indicator_item)
+                
+                #######################################################
+                # np.ones_like(self.training_user, dtype=np.float32)这一句需要改为具体的用户对item的评分
+                
                 R = sp.csr_matrix(
                     (np.ones_like(self.training_user, dtype=np.float32), (self.training_user, self.training_item)),
                     shape=(self.n_users, self.n_items))
