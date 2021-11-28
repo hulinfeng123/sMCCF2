@@ -2,6 +2,7 @@ import scipy.sparse as sp
 import torch.nn as nn
 import numpy as np
 import torch
+import random
 
 '''
 ssl模块一定要使用和前面模块一样的初始化的u_embedding,i_embedding，
@@ -10,14 +11,16 @@ ssl模块一定要使用和前面模块一样的初始化的u_embedding,i_embedd
 
 class SSL(nn.Module):
 
-    def __init__(self, U2E , I2E, dataset , embed_dim ,layer , aug_type , ssl_reg , ssl_temp , ssl_ratio):
+    def __init__(self, user_embedding , item_embedding, dataset , trainUser, trainItem):
 
         super(SSL, self).__init__()
 
+        self.weights = dict()
+
         self.dataset=dataset
-        self.embedding_size = 64
-        self.user_embedding = U2E
-        self.item_embedding = I2E
+        #self.embedding_size = 64
+        self.user_embedding = user_embedding
+        self.item_embedding = item_embedding
         #self.n_layers = layer
         self.n_layers = 3
         #elf.aug_type = aug_type
@@ -33,14 +36,11 @@ class SSL(nn.Module):
         self.n_users = self.dataset.n_user
         self.n_items = self.dataset.m_item
 
-        self.training_user = self.dataset.trainUser
-        self.training_item = self.dataset.trainItem
+        self.training_user = trainUser
+        self.training_item = trainItem
 
 #   传入的是nodes_u  nodes_i
     def forward(self, nodes_u, nodes_i):
-        self.weights = dict()
-        self.weights['user_embedding'] = self.user_embedding
-        self.weights['item_embedding'] = self.item_embedding
         #initializer = tf.contrib.layers.xavier_initializer()
         # self.weights['user_embedding'] = tf.Variable(initializer([self.n_users, self.embedding_size]),
         #                                              name='user_embedding')
@@ -65,31 +65,44 @@ class SSL(nn.Module):
         for k in range(1, self.n_layers + 1):
             if self.aug_type in [0, 1]:
                 # 每一层的子矩阵都是相同的
-                self.sub_mat['sub_mat_1%d' % k] = torch.sparse.Tensor(
-                    self.sub_mat['adj_indices_sub1'],
-                    self.sub_mat['adj_values_sub1'],
-                    self.sub_mat['adj_shape_sub1'])
-                self.sub_mat['sub_mat_2%d' % k] = torch.sparse.Tensor(
-                    self.sub_mat['adj_indices_sub2'],
-                    self.sub_mat['adj_values_sub2'],
-                    self.sub_mat['adj_shape_sub2'])
+                sub_mat['sub_mat_1%d' % k] = torch.sparse.FloatTensor(
+                    sub_mat['adj_indices_sub1'],
+                    sub_mat['adj_values_sub1'],
+                    sub_mat['adj_shape_sub1']).to_dense().cuda()
+                sub_mat['sub_mat_2%d' % k] = torch.sparse.FloatTensor(
+                    sub_mat['adj_indices_sub2'],
+                    sub_mat['adj_values_sub2'],
+                    sub_mat['adj_shape_sub2']).to_dense().cuda()
             else:
                 ''' 带有参数k代表着随机游走的每一层都是不同的图 '''
-                self.sub_mat['sub_mat_1%d' % k] = torch.sparse.Tensor(
-                    self.sub_mat['adj_indices_sub1%d' % k],
-                    self.sub_mat['adj_values_sub1%d' % k],
-                    self.sub_mat['adj_shape_sub1%d' % k])
-                self.sub_mat['sub_mat_2%d' % k] = torch.sparse.Tensor(
-                    self.sub_mat['adj_indices_sub2%d' % k],
-                    self.sub_mat['adj_values_sub2%d' % k],
-                    self.sub_mat['adj_shape_sub2%d' % k])
-        ego_embeddings = torch.concat([self.weights['user_embedding'], self.weights['item_embedding']], axis=0)
+                sub_mat['sub_mat_1%d' % k] = torch.sparse.FloatTensor(
+                    sub_mat['adj_indices_sub1%d' % k],
+                    sub_mat['adj_values_sub1%d' % k],
+                    sub_mat['adj_shape_sub1%d' % k]).to_dense().cuda()
+                sub_mat['sub_mat_2%d' % k] = torch.sparse.FloatTensor(
+                    sub_mat['adj_indices_sub2%d' % k],
+                    sub_mat['adj_values_sub2%d' % k],
+                    sub_mat['adj_shape_sub2%d' % k]).to_dense().cuda()
+
+        #print(self.weights['user_embedding'].weight[0])
+        # for i in len(range(self.weights['user_embedding'])):
+        # print(self.user_embedding.size())
+        # print(self.item_embedding.size())
+        ego_embeddings = torch.cat([self.user_embedding, self.item_embedding.t()], dim=0)
+        # ego_embeddings = torch.cat([self.weights['user_embedding'], self.weights['item_embedding']], dim=0)
         ego_embeddings_sub1 = ego_embeddings
         ego_embeddings_sub2 = ego_embeddings
         all_embeddings = [ego_embeddings]
         all_embeddings_sub1 = [ego_embeddings_sub1]
         all_embeddings_sub2 = [ego_embeddings_sub2]
 
+        print(self.user_embedding.size())
+        print(self.item_embedding.size())
+        print(ego_embeddings.size())
+        print(sub_mat['sub_mat_12'].size())
+        #   3900*3900
+        print(ego_embeddings_sub1.size())
+        #   2572*2614
         for k in range(1, self.n_layers + 1):
             '''
             sparse_tensor_dense_matmul稀疏张量*稠密矩阵，返回稠密矩阵
@@ -97,25 +110,18 @@ class SSL(nn.Module):
             all_embeddings += [ego_embeddings]是迭代每层的最终结果
             后面2个是对2个不同子图对应的操作
             '''
-            #ego_embeddings = tf.sparse_tensor_dense_matmul(adj_mat, ego_embeddings, name="sparse_dense")
-            #all_embeddings += [ego_embeddings]
 
-            # ego_embeddings_sub1 = tf.sparse_tensor_dense_matmul(
-            #     self.sub_mat['sub_mat_1%d' % k],
-            #     ego_embeddings_sub1, name="sparse_dense_sub1%d" % k)
-            # ego_embeddings_sub1 = tf.multiply(ego_embeddings_sub1, self.mask1)
-            ego_embeddings_sub1 = torch.matmul(
-                self.sub_mat['sub_mat_1%d' % k],
-                ego_embeddings_sub1, name="sparse_dense_sub1%d" % k)
-            all_embeddings_sub1 += [ego_embeddings_sub1]
+        '''-----------------------------------------------------------------------
+        这里遇到的主要问题是u2e的embedding是1286*2614的，i2e的embedding是2614*1286的，维度没法叠加
+        ll师兄的tensor初始化是在模块的init中，且嵌入向量的维度大小相同，不知道改成同一纬度对别的模块有无影响       
+        ----------------------------------------------------------------------------
+        '''
+        ego_embeddings_sub1 = torch.matmul(sub_mat['sub_mat_1%d' % k],ego_embeddings_sub1)
+        all_embeddings_sub1 += [ego_embeddings_sub1]
 
-            ego_embeddings_sub2 = torch.matmul(
-                self.sub_mat['sub_mat_2%d' % k],
-                ego_embeddings_sub2, name="sparse_dense_sub2%d" % k)
-            # ego_embeddings_sub2 = tf.multiply(ego_embeddings_sub2, self.mask2)
-            all_embeddings_sub2 += [ego_embeddings_sub2]
+        ego_embeddings_sub2 = torch.matmul(sub_mat['sub_mat_2%d' % k],ego_embeddings_sub2)
+        all_embeddings_sub2 += [ego_embeddings_sub2]
 
-        #all_embeddings = tf.stack(all_embeddings, 1)
         '''
         reduce_mean()函数沿指定轴求平均，keepdims用来设置是否维持维度，false则降维
         '''
@@ -181,26 +187,17 @@ class SSL(nn.Module):
 
         return ssl_loss
 
-    def randint_choice(high, size=None, replace=True, p=None, exclusion=None):
-        """Return random integers from `0` (inclusive) to `high` (exclusive).
-        """
-        a = np.arange(high)
-        if exclusion is not None:
-            if p is None:
-                p = np.ones_like(a)
-            else:
-                p = np.array(p, copy=True)
-            p = p.flatten()
-            p[exclusion] = 0
-        if p is not None:
-            p = p / np.sum(p)
-        sample = np.random.choice(a, size=size, replace=replace, p=p)
-        return sample
 
     def _convert_csr_to_sparse_tensor_inputs(self, X):
         coo = X.tocoo()
-        indices = np.mat([coo.row, coo.col]).transpose()
-        return indices, coo.data, coo.shape
+        indices = np.vstack((coo.row, coo.col))
+        # indices = np.mat([coo.row, coo.col]).transpose()
+        i = torch.LongTensor(indices)
+        v = torch.FloatTensor(coo.data)
+        shape = coo.shape
+        #torch.sparse.FloatTensor(i, v, torch.Size(shape)).to_dense()
+        #return indices, coo.data, coo.shape
+        return i, v, shape
 
     def create_adj_mat(self, is_subgraph=False, aug_type=0):
         # @timer
@@ -217,8 +214,8 @@ class SSL(nn.Module):
                 def randint_choice(high, size=None, replace=True, p=None, exclusion=None):
                     ’Return random integers from `0` (inclusive) to `high` (exclusive).‘
                 """
-                drop_user_idx = self.randint_choice(self.n_users, size=self.n_users * self.ssl_ratio, replace=False)
-                drop_item_idx = self.randint_choice(self.n_items, size=self.n_items * self.ssl_ratio, replace=False)
+                drop_user_idx = random.sample(list(range(self.n_users)), size=self.n_users * self.ssl_ratio)
+                drop_item_idx = random.sample(list(range(self.n_items)), size=self.n_items * self.ssl_ratio)
                 indicator_user = np.ones(self.n_users, dtype=np.float32)
                 indicator_item = np.ones(self.n_items, dtype=np.float32)
                 indicator_user[drop_user_idx] = 0.
@@ -238,8 +235,7 @@ class SSL(nn.Module):
                 ''' 建立U-I的节点丢失后的二部邻接图'''
 
             if aug_type in [1, 2]:
-                keep_idx = ssl_tool.randint_choice_v2(len(self.training_user),
-                                             size=int(len(self.training_user) * (1 - self.ssl_ratio)), replace=False)
+                keep_idx = random.sample(list(range(len(self.training_user))),int(len(self.training_user) * (1 - self.ssl_ratio)))
                 user_np = np.array(self.training_user)[keep_idx]
                 item_np = np.array(self.training_item)[keep_idx]
                 ratings = np.ones_like(user_np, dtype=np.float32)

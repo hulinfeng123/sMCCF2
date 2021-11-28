@@ -10,11 +10,13 @@ data = []
 for line in open('./business_user.txt', 'r'):
     (business, user, rating) = line.split(' ')
     data.append((business, user, rating))
+    #   （商品i，用户u，评分r）三元组，共30838项
 
 random.shuffle(data)
 
 length = data.__len__()
 
+#   train与test 8：2分成
 data_train = data[:int(length * 0.8)]
 data_test = data[int(length * 0.8):]
 
@@ -23,6 +25,7 @@ for i in range(len(data_train)):
     i_train.append(int(data_train[i][0]))
     u_train.append(int(data_train[i][1]))
     r_train.append(int(data_train[i][2]))
+#   i_train, u_train, r_train分别记录的是训练集三元组中的对应各自编号
 
 i_test, u_test, r_test = [], [], []
 for i in range(len(data_test)):
@@ -41,6 +44,7 @@ for i in range(len(u_train)):
     if i_train[i] not in i_adj.keys():
         i_adj[i_train[i]] = []
     u_adj[u_train[i]].extend([(i_train[i], r_train[i])])
+    # u_adj是把一个用户对多个商品的评分组合在一行中的表示,所以需要用字典，如{"u1":"(i1,r1),(i2,r2),..."}
     i_adj[i_train[i]].extend([(u_train[i], r_train[i])])
 
 n_users = 1286
@@ -49,6 +53,7 @@ n_items = 2614
 ufeature = {}  # 1286*2614   key是用户编码，值是列表表示的对应物品位置的评分
 for i in range(n_users):
     ufeature[i] = [0 for _ in range(n_items)]
+#   ufeature的one-hot编码的初始化
 
 ifeature = {}  # 2614*1286
 for i in range(n_items):
@@ -58,7 +63,7 @@ for key in u_adj.keys():
     n = u_adj[key].__len__()
     for i in range(n):
         ufeature[key][u_adj[key][i][0]] = u_adj[key][i][1]
-
+#   ufeature：将每个user编码为one-hot编码，每个user对应的2614个位置分别为user对该item的评分
 
 for key in i_adj.keys():
     n = i_adj[key].__len__()
@@ -66,9 +71,13 @@ for key in i_adj.keys():
         ifeature[key][i_adj[key][i][0]] = i_adj[key][i][1]
 
 ufeature_size = ufeature[0].__len__()
+#   2614
 ifeature_size = ifeature[0].__len__()
+#   1286
 
 ufea = []
+#   ufea存储每个user编号（0~1286）对应的one-hot编码（带有评分）
+#   然后将ufea作为参数给u2e的权重赋值作为初始化权重
 for key in ufeature.keys():
     ufea.append(ufeature[key])
 ufea = torch.Tensor(np.array(ufea, dtype=np.float32))

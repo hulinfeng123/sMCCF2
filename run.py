@@ -116,8 +116,8 @@ class SMCCF(nn.Module):
     def loss(self, nodes_u, nodes_i, ratings):
         scores = self.forward(nodes_u, nodes_i)
         loss = self.criterion(scores, ratings)
-        # total_loss = loss + self.regularization() + self.ssl_loss
-        total_loss = loss + self.ssl_loss
+        total_loss = loss + self.regularization() + self.ssl_loss(nodes_u, nodes_i)
+        #total_loss = loss + self.ssl_loss
         return total_loss
 
 
@@ -223,25 +223,29 @@ def main():
     with open(data_path + '/_allData.p', 'rb') as meta:
         u2e, i2e, u_train, i_train, r_train, u_test, i_test, r_test, u_adj, i_adj = pickle.load(meta)
         # I2E:2614*1286  U2E:1286*2614
+        # 这里的u2e以及i2e获得是one-hot编码矩阵，具体的初始化向量是在aggregator中通过L0dense获得
     with open(data_path + '/friends.p', 'rb') as meta2:
         u_friends, i_friends = pickle.load(meta2)
 
         '''===========================change=============================='''
     dataset = Loader(args.dataset, device)
 
-    trainset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.trainUser), torch.LongTensor(dataset.trainItem),
-                                                  torch.FloatTensor(dataset.trainRating))
+    print(len(dataset.trainUser))
+    print(len(dataset.trainItem))
 
-    testset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.testUser), torch.LongTensor(dataset.testItem),
-                                                 torch.FloatTensor(dataset.testRating))
+    # trainset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.trainUser), torch.LongTensor(dataset.trainItem),
+    #                                               torch.FloatTensor(dataset.trainRating))
+    #
+    # testset = torch.utils.data.TensorDataset(torch.LongTensor(dataset.testUser), torch.LongTensor(dataset.testItem),
+    #                                              torch.FloatTensor(dataset.testRating))
 
     '''===========================change=============================='''
 
-    # trainset = torch.utils.data.TensorDataset(torch.LongTensor(u_train), torch.LongTensor(i_train),
-    #                                           torch.FloatTensor(r_train))
-    #
-    # testset = torch.utils.data.TensorDataset(torch.LongTensor(u_test), torch.LongTensor(i_test),
-    #                                          torch.FloatTensor(r_test))
+    trainset = torch.utils.data.TensorDataset(torch.LongTensor(u_train), torch.LongTensor(i_train),
+                                              torch.FloatTensor(r_train))
+
+    testset = torch.utils.data.TensorDataset(torch.LongTensor(u_test), torch.LongTensor(i_test),
+                                             torch.FloatTensor(r_test))
 
     _train = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True,
                                          num_workers=16, pin_memory=True)
@@ -250,7 +254,9 @@ def main():
     # print(type(u2e.to(device).num_embeddings)) # <class 'int'>
     '''===========================对U-I加入SSL处理=================================='''
     '''加入SSL学习得到的联合任务的损失，需要改变原user part的u2e，i2e，用ssl计算获得'''
-    ssl_loss=SSL(u2e.to(device), i2e.to(device), dataset, embed_dim, args.layer, args.aug_type ,args.ssl_reg, args.ssl_temp, args.ssl_ratio)
+    user_embedding = torch.tensor(u2e.weight.data)
+    item_embedding = torch.tensor(i2e.weight.data)
+    ssl_loss = SSL(user_embedding.to(device), item_embedding.to(device), dataset, u_train ,i_train)
 
     # user part
     u_agg_embed_cmp1 = aggregator(u2e.to(device), i2e.to(device), u_adj, embed_dim, device=device,
